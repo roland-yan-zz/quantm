@@ -1,2 +1,3 @@
-# quantm
+# Quantm
+
 Quantm by Solexa. 
