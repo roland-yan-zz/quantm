@@ -1,0 +1,237 @@
+{
+  "nbformat": 4,
+  "nbformat_minor": 0,
+  "metadata": {
+    "kernelspec": {
+      "display_name": "Python 3",
+      "language": "python",
+      "name": "python3"
+    },
+    "language_info": {
+      "codemirror_mode": {
+        "name": "ipython",
+        "version": 3
+      },
+      "file_extension": ".py",
+      "mimetype": "text/x-python",
+      "name": "python",
+      "nbconvert_exporter": "python",
+      "pygments_lexer": "ipython3",
+      "version": "3.6.6"
+    },
+    "colab": {
+      "name": "binary qvsm",
+      "provenance": []
+    },
+    "accelerator": "GPU"
+  },
+  "cells": [
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "JUsmANUGStjI"
+      },
+      "source": [
+        "! pip install qiskit\r\n",
+        "! pip install qiskit_aqua"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "SH8yW5h_QDXY"
+      },
+      "source": [
+        "import numpy as np\n",
+        "import scipy\n",
+        "from scipy.linalg import expm\n",
+        "import matplotlib.pyplot as plt\n",
+        "from mpl_toolkits.mplot3d import Axes3D\n",
+        "from sklearn import datasets\n",
+        "from sklearn.model_selection import train_test_split\n",
+        "from sklearn.preprocessing import StandardScaler, MinMaxScaler\n",
+        "from sklearn.decomposition import PCA"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "BAzt1uwCQDXZ"
+      },
+      "source": [
+        "def breast_cancer(training_size, test_size, n, PLOT_DATA=True):\n",
+        "    class_labels = [r'Benign', r'Malignant']\n",
+        "    \n",
+        "    # First the dataset must be imported.\n",
+        "    cancer = datasets.load_breast_cancer()\n",
+        "    \n",
+        "    # To find if the classifier is accurate, a common strategy is\n",
+        "    # to divide the dataset into a training set and a test set.\n",
+        "    # Here the data is divided into 70% training, 30% testing.\n",
+        "    X_train, X_test, Y_train, Y_test = train_test_split(cancer.data, cancer.target, test_size=0.2, random_state=109)\n",
+        "    \n",
+        "    # Now the dataset's features will be standardized\n",
+        "    # to fit a normal distribution.\n",
+        "    scaler = StandardScaler().fit(X_train)\n",
+        "    X_train = scaler.transform(X_train)\n",
+        "    X_test = scaler.transform(X_test)\n",
+        "    \n",
+        "    # To be able to use this data with the given\n",
+        "    # number of qubits, the data must be broken down from\n",
+        "    # 30 dimensions to `n` dimensions.\n",
+        "    # This is done with Principal Component Analysis (PCA),\n",
+        "    # which finds patterns while keeping variation.\n",
+        "    pca = PCA(n_components=n).fit(X_train)\n",
+        "    X_train = pca.transform(X_train)\n",
+        "    X_test = pca.transform(X_test)\n",
+        "\n",
+        "    # The last step in the data processing is\n",
+        "    # to scale the data to be between -1 and 1\n",
+        "    samples = np.append(X_train, X_test, axis=0)\n",
+        "    minmax_scale = MinMaxScaler((-1, 1)).fit(samples)\n",
+        "    X_train = minmax_scale.transform(X_train)\n",
+        "    X_test = minmax_scale.transform(X_test)\n",
+        "\n",
+        "    # Now some sample should be picked to train the model from\n",
+        "    training_input = {key: (X_train[Y_train == k, :])[:training_size] for k, key in enumerate(class_labels)}\n",
+        "    test_input = {key: (X_train[Y_train == k, :])[training_size:(\n",
+        "        training_size+test_size)] for k, key in enumerate(class_labels)}\n",
+        "\n",
+        "    if PLOT_DATA:\n",
+        "        for k in range(0, 2):\n",
+        "            x_axis_data = X_train[Y_train == k, 0][:training_size]\n",
+        "            y_axis_data = X_train[Y_train == k, 1][:training_size]\n",
+        "            \n",
+        "            label = 'Malignant' if k is 1 else 'Benign'\n",
+        "            plt.scatter(x_axis_data, y_axis_data, label=label)\n",
+        "\n",
+        "        plt.title(\"Breast Cancer Dataset (Dimensionality Reduced With PCA)\")\n",
+        "        plt.legend()\n",
+        "        plt.show()\n",
+        "        \n",
+        "\n",
+        "    return X_train, training_input, test_input, class_labels"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "hkluziBSQDXZ"
+      },
+      "source": [
+        "# Algorithm Preperation\n",
+        "\n",
+        "With the dataset prepared, the dataset can now be used.\n",
+        "Here, the data is split up so that the algorithm input can be generated."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "A1UDfRYJQDXZ"
+      },
+      "source": [
+        "from qiskit.aqua.utils import split_dataset_to_data_and_labels\n",
+        "\n",
+        "n = 2 # How many features to use (dimensionality)\n",
+        "training_dataset_size = 150\n",
+        "testing_dataset_size = 50\n",
+        "\n",
+        "sample_Total, training_input, test_input, class_labels = breast_cancer(training_dataset_size, testing_dataset_size, n)\n",
+        "\n",
+        "datapoints, class_to_label = split_dataset_to_data_and_labels(test_input)\n",
+        "print(class_to_label)"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "xlxvdHnnQDXa"
+      },
+      "source": [
+        "The algorithm inputs are initialized before.\n",
+        "To build the Support Vector Machine, a feature map has to be initialized.\n",
+        "\n",
+        "It is in this section that QCGPU, the software developed in this project is used. Because of the integration with IBM's software, it can be used seamlessly instead of there simulation backend, providing a speedup.\n",
+        "\n",
+        "This speedup means that algorithms such as this can be tested quicker, allowing for faster prototyping and thus better algorithms overall."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "4uBIx31sQDXa"
+      },
+      "source": [
+        "from qiskit.aqua.input import ClassificationInput\n",
+        "from qiskit_qcgpu_provider import QCGPUProvider\n",
+        "from qiskit.aqua import run_algorithm\n",
+        "\n",
+        "params = {\n",
+        "    'problem': {'name': 'svm_classification', 'random_seed': 10598},\n",
+        "    'algorithm': { 'name': 'QSVM.Kernel' },\n",
+        "    'backend': {'name': 'qasm_simulator', 'shots': 1024},\n",
+        "    'feature_map': {'name': 'SecondOrderExpansion', 'depth': 2, 'entanglement': 'linear'}\n",
+        "}\n",
+        "\n",
+        "backend = QCGPUProvider().get_backend('qasm_simulator')\n",
+        "\n",
+        "algo_input = ClassificationInput(training_input, test_input, datapoints[0])\n",
+        "%time result = run_algorithm(params, algo_input)\n",
+        "%time result = run_algorithm(params, algo_input, backend=backend)"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "7GkYLqVqQDXb"
+      },
+      "source": [
+        "# Running The Algorithm\n",
+        "\n",
+        "With everything setup, the algorithm can now be run.\n",
+        "The run method does everything, including the training testing \n",
+        "and prediciton on unlabeled data. We can also find data such as the\n",
+        "success ratio.\n",
+        "\n",
+        "The trained model is stored in the `svm` variable.\n",
+        "This is them used to predict some datapoints, which is then analyzed in the next section"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "Isk5kkytQDXb"
+      },
+      "source": [
+        "print(\"ground truth:    {}\".format(datapoints[1]))\n",
+        "print(\"prediction:      {}\".format(result['predicted_labels']))\n",
+        "print(\"predicted class: {}\".format(result['predicted_classes']))\n",
+        "print(\"accuracy:        {}\".format(result['testing_accuracy']))"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "pskkabqzQDXb"
+      },
+      "source": [
+        ""
+      ],
+      "execution_count": null,
+      "outputs": []
+    }
+  ]
+}
